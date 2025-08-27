@@ -1,0 +1,13 @@
+# backend/.gitignore
+
+# Ignore the node_modules directory
+node_modules/
+
+# Ignore the .env file which contains secret API keys
+.env
+
+# Ignore system files (optional but good practice)
+.DS_Store
+npm-debug.log*
+node_modules/
+.env

@@ -1,0 +1,96 @@
+cd ~/backend
+run node server.js
+update extension in chrome by hitting circled arrow
+enter ultralinq and app icon should appear in right corner
+Hard Refresh: Go to the UltraLinq page (either the worksheet or report tab) and do a hard refresh (Ctrl+Shift+R or Cmd+Shift+R)    
+# UltraLinq AI Report Helper
+
+This is a Chrome browser extension designed to enhance the workflow for medical professionals using the UltraLinq platform. It adds an on-page button that scrapes patient and study data, including ultrasound images, and sends it to a local backend server to generate a preliminary diagnostic report using the Google Gemini AI model.
+
+The final report is then copied to the user's clipboard, ready to be pasted into a final report editor.
+
+## Features
+
+- **Seamless UI:** Adds a "Draft Gemini Report" button directly onto the UltraLinq study page.
+- **Multi-View Scraping:** Intelligently detects and scrapes data from the "Worksheet," "Clips & Stills," and final "Report" tabs.
+- **Advanced Image Extraction:** Uses the Chrome Debugger API to reliably access and scrape image data from within UltraLinq's sandboxed iframe viewer.
+- **Local AI Backend:** Communicates with a local Node.js server to process data securely.
+- **Automated Workflow:** Generates a draft report and copies it to the clipboard with a single click.
+
+## Project Structure
+
+This project is a monorepo containing two main parts:
+
+1.  **`/` (Root Folder):** The Chrome Extension frontend.
+    -   `manifest.json`: Configures the extension, its permissions, and scripts.
+    -   `content.js`: Injects the button onto the page and communicates with the background script.
+    -   `background.js`: The "brain" of the extension. Handles the complex debugger-based scraping logic and communication with the backend.
+    -   `icon.png`: The extension's icon.
+
+2.  **`/backend`:** The local Node.js server that connects to the Gemini API.
+    -   `server.js`: An Express server that receives data, formats a prompt, and calls the Gemini API.
+    -   `.env`: A **local, secret file** for storing your Gemini API key (this file is NOT uploaded to GitHub).
+    -   `package.json`: Defines the server's dependencies.
+
+---
+
+## Installation and Setup
+
+Follow these steps to get the project running on a new machine.
+
+### Part 1: Setting up the Backend Server
+
+1.  **Navigate to the Backend Directory:**
+    Open a terminal and change into the `backend` folder.
+    ```bash
+    cd path/to/ultralinq-extension/backend
+    ```
+
+2.  **Install Dependencies:**
+    Run `npm install` to download the required Node.js packages (`express`, `cors`, `dotenv`, etc.).
+    ```bash
+    npm install
+    ```
+
+3.  **Create the Environment File:**
+    Create a new file in the `backend` directory named `.env`.
+
+4.  **Add Your API Key:**
+    Open the `.env` file and add your Google Gemini API key. The file should contain a single line in this exact format (no quotes):
+    ```
+    GEMINI_API_KEY=AIzaSy...your...actual...api...key...here
+    ```
+
+5.  **Run the Server:**
+    Start the server from the `backend` directory.
+    ```bash
+    node server.js
+    ```
+    If successful, you will see the message: `Server listening at http://localhost:3000`. Leave this terminal window running.
+
+### Part 2: Installing the Chrome Extension
+
+1.  **Open Chrome Extensions Page:**
+    Open Google Chrome and navigate to `chrome://extensions/`.
+
+2.  **Enable Developer Mode:**
+    In the top-right corner of the page, turn on the "Developer mode" toggle.
+
+3.  **Load the Extension:**
+    Click the "Load unpacked" button that appears on the top-left.
+
+4.  **Select the Folder:**
+    In the file dialog, navigate to and select the **root `ultralinq-extension` folder** (the one containing `manifest.json`).
+
+The "UltraLinq AI Report Helper" extension will now appear in your list of extensions and will be active.
+
+---
+
+## Usage
+
+1.  Ensure your backend server is running (from Part 1, Step 5).
+2.  Navigate to a study page on the UltraLinq website.
+3.  A blue "Draft Gemini Report" button will appear in the top-right corner of the page.
+4.  **IMPORTANT:** For the image scraping to work, you must **close the Chrome DevTools (F12)** on the UltraLinq page before clicking the button. The extension's debugger cannot attach if the DevTools debugger is already open.
+5.  Click the "Draft Gemini Report" button. The button text will change to "Processing...".
+6.  After a few seconds, a success alert will appear, and the drafted report will be copied to your clipboard.                     
