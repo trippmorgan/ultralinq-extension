@@ -1,138 +1,197 @@
-// background.js (FINAL - Refactored with the definitive ultralinqCues.js)
+// background.js
 
-import { ULTRALINQ_CUES } from './ultralinqCues.js';
-
+// Listen for the message from the popup
 chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
-  if (message.action === "startScraping") {
-    startScrapingProcess(sender.tab.id);
-    return true;
-  }
+    if (message.action === "startFullReportProcess") {
+        (async () => {
+            const [activeTab] = await chrome.tabs.query({ active: true, currentWindow: true });
+            if (!activeTab) {
+                sendResponse({ success: false, error: "Could not find an active tab." });
+                return;
+            }
+            // Now, pass the correct tab ID to our main process.
+            const response = await startFullReportProcess(activeTab.id);
+            sendResponse(response);
+        })();
+        return true; // Keep message channel open for async response
+    }
 });
 
-/**
- * Builds the dynamic scraper string by injecting the cues.
- * This function creates a self-contained script to be executed by the debugger.
- * @returns {string} The complete, executable JavaScript string.
- */
-function buildScraperExpression() {
-  // We pass the entire cues object into the evaluated script.
-  // This makes the script self-contained and aware of all selectors.
-  return `(function() {
-    const CUES = ${JSON.stringify(ULTRALINQ_CUES)}; // Inject cues as a literal object
+// Main function that orchestrates the entire process
+// in background.js
 
-    // == Helper Functions ==
-    function findValueByLabel(scope, selector, labelText) {
-      const parent = scope ? document.querySelector(scope) : document;
-      if (!parent) return null;
-      const labels = Array.from(parent.querySelectorAll(selector));
-      const found = labels.find(el => el.innerText.trim().startsWith(labelText));
-      return found?.nextElementSibling?.innerText.trim() || null;
-    }
+async function startFullReportProcess(tabId) {
+    const debuggeeId = { tabId };
+    try {
+        await chrome.debugger.attach(debuggeeId, "1.3");
 
-    function findTextareaByLegend(legendText) {
-        const legends = Array.from(document.querySelectorAll(CUES.dom.worksheet.conclusionLegend));
-        const target = legends.find(leg => leg.innerText.trim() === legendText);
-        return target?.closest(CUES.dom.worksheet.conclusionFieldset)?.querySelector(CUES.dom.worksheet.findingTextarea)?.value || null;
-    }
+        // Step 1 & 2: Get TEXT and IMAGE data simultaneously
+        const [injectionResult, clipsResponse] = await Promise.all([
+            // Inject a script to get the text data
+            chrome.scripting.executeScript({
+                target: { tabId },
+                func: scrapePageContent,
+            }),
+            // Send a command to the debugger to get the image data
+            chrome.debugger.sendCommand(debuggeeId, "Runtime.evaluate", {
+                // *** THE FIX IS HERE: A smarter expression that waits ***
+                expression: `
+                    new Promise((resolve) => {
+                        const pollForClips = setInterval(() => {
+                            const clips = document.getElementById('html5-embed')?.contentWindow?.clips || window.clips;
+                            if (clips && Object.keys(clips).length > 0) {
+                                clearInterval(pollForClips);
+                                resolve(JSON.stringify(clips));
+                            }
+                        }, 250); // Check every 250ms
 
-    // == Scraper Logic ==
-    const patientInfo = {
-      name: document.querySelector(CUES.dom.patientHeader.patientName)?.innerText.trim() 
-            ?? findValueByLabel(CUES.dom.report.container, CUES.dom.report.tableCellWithLabel, CUES.dom.report.patientNameLabel) 
-            ?? 'N/A',
-      dob: findValueByLabel(CUES.dom.patientHeader.container, CUES.dom.patientHeader.infoBarLabelCell, CUES.dom.patientHeader.dobLabel) 
-           ?? findValueByLabel(CUES.dom.report.container, CUES.dom.report.tableCellWithLabel, CUES.dom.report.dobLabel)
-           ?? 'N/A',
-      studyDate: findValueByLabel(CUES.dom.patientHeader.container, CUES.dom.patientHeader.infoBarLabelCell, CUES.dom.patientHeader.studyDateLabel) 
-                 ?? findValueByLabel(CUES.dom.report.container, CUES.dom.report.tableCellWithLabel, CUES.dom.report.studyDateLabel)
-                 ?? 'N/A',
-    };
+                        // Add a timeout to prevent it from running forever
+                        setTimeout(() => {
+                            clearInterval(pollForClips);
+                            // Resolve with an empty object if not found after 5 seconds
+                            resolve(JSON.stringify({})); 
+                        }, 5000);
+                    })
+                `,
+                awaitPromise: true, // Tells the debugger to wait for the Promise to resolve
+                returnByValue: true
+            })
+        ]);
 
-    const worksheetMeasurements = Array.from(document.querySelectorAll(CUES.dom.worksheet.measurementRow))
-        .map(row => {
-            const label = row.querySelector(CUES.dom.worksheet.measurementLabelCell)?.innerText.replace(":", "").trim();
-            const input = row.querySelector(CUES.dom.worksheet.measurementValueInput);
-            const units = input?.nextElementSibling?.classList.contains(CUES.dom.worksheet.measurementUnitSpan.slice(1)) ? \` \${input.nextElementSibling.innerText.trim()}\` : "";
-            if (label && input?.value.trim()) { return \`\${label}: \${input.value.trim()}\${units}\`; }
-            return null;
-        }).filter(Boolean).join('\\n');
+        // Process the results
+        const { studyType, patientInfo, measurements, conclusion } = injectionResult[0].result;
+        const clipsData = JSON.parse(clipsResponse.result.value);
+        const imageUrls = Object.values(clipsData).map(clip => clip.furl).filter(Boolean);
 
-    const reportMeasurements = Array.from(document.querySelectorAll(CUES.dom.report.measurementsTable))
-        .map(row => row.innerText.trim()).filter(Boolean).join('\\n');
+        // Step 3: Convert Image URLs to Base64
+        let imageData = [];
+        if (imageUrls.length > 0) {
+            const [conversionResult] = await chrome.scripting.executeScript({
+                target: { tabId },
+                func: urlsToDataUrls,
+                args: [imageUrls.slice(0, 8)],
+            });
+            imageData = conversionResult.result;
+        }
+
+        // Step 4 & 5: Assemble payload and send to backend
+        const payload = { studyType, patientInfo, measurements, conclusion, imageData };
+        const report = await sendToBackend(payload);
         
-    const measurements = worksheetMeasurements || reportMeasurements || "";
+        // Step 6: Copy report to clipboard
+        await chrome.scripting.executeScript({
+            target: { tabId },
+            func: (text) => navigator.clipboard.writeText(text),
+            args: [report]
+        });
 
-    const conclusion = findTextareaByLegend(CUES.dom.worksheet.conclusionLegendText)
-        || findTextareaByLegend(CUES.dom.worksheet.summaryLegendText)
-        || Array.from(document.querySelectorAll(CUES.dom.report.conclusionParagraph)).map(p => p.innerText.trim()).join('\\n')
-        || "";
+        await alertOnPage(tabId, "Success! The draft report has been copied to your clipboard.");
+        return { success: true };
 
-    const clips = window[CUES.js.globalClipsObject.replace('window.','')] ?? {};
-
-    return JSON.stringify({ patientInfo, measurements, conclusion, clips });
-  })();`;
+    } catch (error) {
+        console.error("Full Process Error:", error);
+        await alertOnPage(tabId, `Error: ${error.message}. Is DevTools (F12) open?`);
+        return { success: false, error: error.message };
+    } finally {
+        await chrome.debugger.detach(debuggeeId).catch(e => console.error("Error detaching debugger:", e));
+    }
 }
 
+// --- Injected Functions ---
+// These are self-contained functions that will be injected into the page to run.
 
-async function startScrapingProcess(tabId) {
-  const debuggeeId = { tabId };
-  const backendUrl = 'http://localhost:3000/generate-report';
-
-  try {
-    await chrome.debugger.attach(debuggeeId, "1.3");
+function scrapePageContent() {
+    // This function runs on the UltraLinq page to get all available text data.
+    const activeTab = document.querySelector("#studytabs .yui-nav .selected");
     
-    const expression = buildScraperExpression();
-    const { result } = await chrome.debugger.sendCommand(debuggeeId, "Runtime.evaluate", { expression, returnByValue: true });
-
-    if (!result || result.exceptionDetails) {
-        throw new Error(`Script evaluation failed: ${result.exceptionDetails?.text || 'Unknown reason'}`);
+    function getStudyType() {
+        const titleElement = document.querySelector('#report2 .h0, #studyTypeLink');
+        if (!titleElement) return 'unknown';
+        const title = titleElement.innerText.toLowerCase();
+        if (title.includes('carotid')) return 'carotid';
+        if (title.includes('aorta')) return 'aorta';
+        if (title.includes('arterial lower')) return 'lower_arterial';
+        if (title.includes('venous')) return 'venous';
+        return 'unknown';
     }
-    
-    const pageData = JSON.parse(result.value);
-    
-    console.log("--- SCRAPED DATA FROM PAGE (using Cues) ---");
-    console.log(pageData); // Log the entire object for easy inspection
-    
-    const imageData = Object.values(pageData.clips)
-      .filter(clip => clip && clip[ULTRALINQ_CUES.js.clipBase64Property])
-      .map(clip => ({
-        data: clip[ULTRALINQ_CUES.js.clipBase64Property],
-        mimeType: 'image/jpeg'
-      }));
 
-    const payload = {
-      patientInfo: pageData.patientInfo,
-      measurements: pageData.measurements,
-      conclusion: pageData.conclusion,
-      imageData: imageData,
+    const studyType = getStudyType();
+    let patientInfo = {}, measurements = "", conclusion = "";
+
+    function findInfoBarValue(labelText) {
+        const labels = Array.from(document.querySelectorAll("#studyinfo td.lab"));
+        const foundLabel = labels.find(el => el.innerText.trim().startsWith(labelText));
+        return foundLabel?.nextElementSibling?.innerText.trim() || "N/A";
+    }
+    patientInfo = {
+        name: document.querySelector("#studyinfo h1")?.innerText.trim() || "N/A",
+        dob: findInfoBarValue("DOB:"),
+        studyDate: findInfoBarValue("Study Date:")
     };
 
-    const serverResponse = await fetch(backendUrl, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(payload),
-    });
-
-    if (!serverResponse.ok) {
-      const errorData = await serverResponse.json();
-      throw new Error(`Server Error: ${serverResponse.status} - ${errorData.error || 'Unknown error'}`);
+    if (activeTab && activeTab.innerText.includes("Worksheet")) {
+        measurements = Array.from(document.querySelectorAll("#worksheet2content tr")).map(row => {
+            const labelCell = row.querySelector("td.k");
+            const valueInput = row.querySelector("td.val input[type='text']");
+            if (labelCell && valueInput && valueInput.value) {
+                const label = labelCell.innerText.replace(":", "").trim();
+                const value = valueInput.value.trim();
+                const units = valueInput.nextElementSibling?.classList.contains('units') ? ` ${valueInput.nextElementSibling.innerText.trim()}` : "";
+                return `${label}: ${value}${units}`;
+            }
+            return null;
+        }).filter(Boolean).join("\n");
+        
+        function findTextareaValueByLegend(legendText) {
+            const allLegends = Array.from(document.querySelectorAll('fieldset legend'));
+            const targetLegend = allLegends.find(legend => legend.innerText.trim() === legendText);
+            return targetLegend?.closest('fieldset').querySelector('textarea.findingta')?.value || null;
+        }
+        conclusion = findTextareaValueByLegend("Conclusions") || findTextareaValueByLegend("Summary") || "No conclusion on worksheet.";
     }
+    return { studyType, patientInfo, measurements, conclusion };
+}
 
-    const { report } = await serverResponse.json();
+async function urlsToDataUrls(urls) {
+    async function toDataUrl(url) {
+        try {
+            const response = await fetch(new URL(url, window.location.href).href);
+            if (!response.ok) return null;
+            const blob = await response.blob();
+            return new Promise(resolve => {
+                const reader = new FileReader();
+                reader.onloadend = () => resolve({ mimeType: blob.type, data: reader.result.split(',')[1] });
+                reader.onerror = () => resolve(null);
+                reader.readAsDataURL(blob);
+            });
+        } catch (e) { return null; }
+    }
+    return Promise.all(urls.map(toDataUrl)).then(results => results.filter(Boolean));
+}
+
+async function sendToBackend(payload) {
+    try {
+        const response = await fetch("http://localhost:3000/generate-report", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify(payload),
+        });
+        if (!response.ok) {
+            const errorData = await response.json();
+            throw new Error(errorData.error || `Server responded with status ${response.status}`);
+        }
+        const data = await response.json();
+        return data.report;
+    } catch (error) {
+        console.error("Error sending data to backend:", error);
+        throw new Error(`Could not reach backend server. Is it running? Error: ${error.message}`);
+    }
+}
+
+async function alertOnPage(tabId, text) {
     await chrome.scripting.executeScript({
-        target: { tabId: tabId },
-        function: (reportText) => { showUIPanel('success', reportText); },
-        args: [report]
+        target: { tabId },
+        func: (msg) => alert(msg),
+        args: [text]
     });
-
-  } catch (error) {
-    console.error("Scraping process failed:", error);
-     await chrome.scripting.executeScript({
-        target: { tabId: tabId },
-        function: (errorMessage) => { showUIPanel('error', errorMessage); },
-        args: [error.message]
-    });
-  } finally {
-    await chrome.debugger.detach(debuggeeId).catch(e => console.error("Could not detach debugger:", e));
-  }
 }

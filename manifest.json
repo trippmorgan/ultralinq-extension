@@ -1,9 +1,8 @@
-
 {
   "manifest_version": 3,
   "name": "UltraLinq AI Report Helper",
   "version": "2.0",
-  "description": "Uses the debugger API to extract study data and images from UltraLinq to draft a clinical report with AI.",
+  "description": "Adds an on-page button to draft AI reports from UltraLinq studies.",
   "permissions": [
     "debugger",
     "scripting",
@@ -12,20 +11,27 @@
   ],
   "host_permissions": [
     "*://*.ultralinq.net/*",
-    "*://*.ultralinq.com/*"
+    "*://*.ultralinq.com/*",
+    "http://localhost:3000/*"
   ],
   "background": {
-    "service_worker": "background.js",
-    "type": "module" 
+    "service_worker": "background.js"
   },
   "action": {
     "default_popup": "popup.html",
-    "default_title": "Draft AI Report"
+    "default_title": "Draft Gemini Report",
+    "default_icon": "icon.png"
   },
-  "web_accessible_resources": [
+  "content_scripts": [
     {
-      "resources": ["ui.js"],
-      "matches": ["*://*.ultralinq.net/*", "*://*.ultralinq.com/*"]
+      "matches": [
+        "*://*.ultralinq.com/*",
+        "*://*.ultralinq.net/*"
+      ],
+      "js": ["content.js"]
     }
-  ]
+  ],
+  "icons": {
+    "128": "icon.png"
+  }
 }

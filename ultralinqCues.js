@@ -46,10 +46,12 @@ export const ULTRALINQ_CUES = Object.freeze({
       tableCellWithLabel: 'td.k',
       summaryFindingsLabel: 'Summary Findings:',
       conclusionParagraph: 'td.conclusionsv p.rp',
-      measurementsTable: '#report2table table.includeauto tr', // Added
+      measurementsTable: 'table.includeauto', // A more generic table selector
+      measurementsTableHeader: 'thead th',
+      measurementsTableRow: 'tbody tr',
+      measurementsTableCell: 'th,td',
       measurementsRightTableTitle: 'Right',
       measurementsLeftTableTitle: 'Left',
-      measurementsTableHeader: '.h15.l',
     },
 
     // --- For the iFrame containing the Image Viewer ---
