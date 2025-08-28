@@ -7,7 +7,8 @@
     "debugger",
     "scripting",
     "activeTab",
-    "clipboardWrite"
+    "clipboardWrite",
+    "storage"
   ],
   "host_permissions": [
     "*://*.ultralinq.net/*",
@@ -22,6 +23,12 @@
     "default_title": "Draft Gemini Report",
     "default_icon": "icon.png"
   },
+  "web_accessible_resources": [
+    {
+      "resources": ["preview.html"],
+      "matches": ["<all_urls>"]
+    }
+  ],
   "content_scripts": [
     {
       "matches": [
@@ -35,3 +42,4 @@
     "128": "icon.png"
   }
 }
+

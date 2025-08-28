@@ -1,0 +1,35 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <title>UltraLinq Scraped Data</title>
+  <style>
+    body { font-family: sans-serif; margin: 20px; }
+    h1, h2 { color: #333; }
+    #scrapedText { white-space: pre-wrap; background-color: #f4f4f4; border: 1px solid #ddd; padding: 15px; border-radius: 5px; }
+    #imagesContainer img { max-width: 400px; margin: 10px; border: 1px solid #ccc; }
+    #controls { margin-bottom: 20px; }
+    #geminiResponse { margin-top: 20px; background-color: #e6f7ff; padding: 15px; border: 1px solid #b3e0ff; display: none; }
+  </style>
+</head>
+<body>
+
+  <h1>Scraped UltraLinq Data</h1>
+
+  <div id="controls">
+    <button id="sendToGeminiBtn">Send to Gemini</button>
+  </div>
+
+  <h2>Scraped Text</h2>
+  <div id="scrapedText">Loading text...</div>
+
+  <h2>Scraped Images</h2>
+  <div id="imagesContainer"></div>
+
+  <div id="geminiResponse">
+    <h2>Gemini Report</h2>
+    <pre id="geminiText"></pre>
+  </div>
+
+  <script src="preview.js"></script>
+</body>
+</html>
