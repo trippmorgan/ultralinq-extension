@@ -1,61 +1,125 @@
 // ultralinq-extension/content.js
 
-function insertButton() {
-// Check if the button already exists to avoid duplicates
-if (document.getElementById("gemini-draft-btn")) return;
-const btn = document.createElement("button");
-btn.id = "gemini-draft-btn";
-btn.innerText = "Draft Gemini Report";
-btn.style.cssText = `
-position: fixed;
-top: 10px;
-right: 10px;
-z-index: 9999;
-padding: 10px 15px;
-background: #4285F4;
-color: white;
-border: none;
-border-radius: 5px;
-cursor: pointer;
-font-family: sans-serif;
-font-weight: bold;
-font-size: 14px;
-box-shadow: 0 2px 5px rgba(0,0,0,0.2);
-transition: background-color 0.2s;
-`;
+function insertButtons() {
+  // Check if buttons already exist to avoid duplicates
+  if (document.getElementById("gemini-button-container")) return;
+  
+  // Create container for buttons
+  const buttonContainer = document.createElement("div");
+  buttonContainer.id = "gemini-button-container";
+  buttonContainer.style.cssText = `
+    position: fixed;
+    top: 10px;
+    right: 10px;
+    z-index: 9999;
+    display: flex;
+    flex-direction: column;
+    gap: 5px;
+  `;
 
-btn.onclick = () => {
-btn.innerText = "Processing...";
-btn.disabled = true;
-btn.style.backgroundColor = "#808080"; // Grey out button while working
+  // Original single study button
+  const singleBtn = document.createElement("button");
+  singleBtn.id = "gemini-draft-btn";
+  singleBtn.innerText = "Draft Gemini Report";
+  singleBtn.style.cssText = `
+    padding: 10px 15px;
+    background: #4285F4;
+    color: white;
+    border: none;
+    border-radius: 5px;
+    cursor: pointer;
+    font-family: sans-serif;
+    font-weight: bold;
+    font-size: 14px;
+    box-shadow: 0 2px 5px rgba(0,0,0,0.2);
+    transition: background-color 0.2s;
+    width: 200px;
+  `;
 
-// Send a message to the background script to start the entire scraping process.
-chrome.runtime.sendMessage({ action: "startScraping" }, (response) => {
-// Re-enable the button when the process is complete or has failed
-btn.innerText = "Draft Gemini Report";
-btn.disabled = false;
-btn.style.backgroundColor = "#4285F4";
+  singleBtn.onclick = () => {
+    singleBtn.innerText = "Processing...";
+    singleBtn.disabled = true;
+    singleBtn.style.backgroundColor = "#808080";
 
-if (chrome.runtime.lastError) {
-console.error(chrome.runtime.lastError.message);
-alert("Error: Could not communicate with the extension's background script. Please try reloading the extension and the page.");
-} else if (response && !response.success) {
-alert(`An error occurred during scraping: ${response.error}`);
+    chrome.runtime.sendMessage({ action: "startFullReportProcess" }, (response) => {
+      singleBtn.innerText = "Draft Gemini Report";
+      singleBtn.disabled = false;
+      singleBtn.style.backgroundColor = "#4285F4";
+
+      if (chrome.runtime.lastError) {
+        console.error(chrome.runtime.lastError.message);
+        alert("Error: Could not communicate with extension. Please reload.");
+      } else if (response && !response.success) {
+        alert(`Error: ${response.error}`);
+      }
+    });
+  };
+
+  // NEW: Longitudinal analysis button
+  const longitudinalBtn = document.createElement("button");
+  longitudinalBtn.id = "gemini-longitudinal-btn";
+  longitudinalBtn.innerText = "📊 Multi-Study Analysis";
+  longitudinalBtn.style.cssText = `
+    padding: 10px 15px;
+    background: #0F9D58;
+    color: white;
+    border: none;
+    border-radius: 5px;
+    cursor: pointer;
+    font-family: sans-serif;
+    font-weight: bold;
+    font-size: 14px;
+    box-shadow: 0 2px 5px rgba(0,0,0,0.2);
+    transition: background-color 0.2s;
+    width: 200px;
+  `;
+
+  longitudinalBtn.onclick = () => {
+    // Check if we're on a page with multiple study links
+    const studyLinks = document.querySelectorAll('a[href*="study"]');
+    
+    if (studyLinks.length <= 1) {
+      alert("📋 Multi-Study Analysis:\n\n" +
+            "Please navigate to a patient's study list page first.\n\n" +
+            "This page should show multiple studies (e.g., patient search results).");
+      return;
+    }
+
+    longitudinalBtn.innerText = "Starting...";
+    longitudinalBtn.disabled = true;
+    longitudinalBtn.style.backgroundColor = "#808080";
+
+    chrome.runtime.sendMessage({ action: "startLongitudinalAnalysis" }, (response) => {
+      longitudinalBtn.innerText = "📊 Multi-Study Analysis";
+      longitudinalBtn.disabled = false;
+      longitudinalBtn.style.backgroundColor = "#0F9D58";
+
+      if (chrome.runtime.lastError) {
+        console.error(chrome.runtime.lastError.message);
+        alert("Error: Could not communicate with extension. Please reload.");
+      } else if (response && !response.success) {
+        alert(`Error: ${response.error}`);
+      }
+    });
+  };
+
+  // Add buttons to container
+  buttonContainer.appendChild(singleBtn);
+  buttonContainer.appendChild(longitudinalBtn);
+  
+  // Add container to page
+  document.body.appendChild(buttonContainer);
+  
+  console.log("UltraLinq AI Helper buttons inserted.");
 }
-});
-};
-document.body.appendChild(btn);
-console.log("UltraLinq AI Helper button inserted.");
-}
 
-// Use an observer to make sure we insert the button only when the page is ready
+// Use an observer to make sure we insert the buttons when the page is ready
 const observer = new MutationObserver((mutations, obs) => {
-// #studytabs is a stable element that appears when a study is loaded
-if (document.querySelector("#studytabs")) {
-insertButton();
-obs.disconnect(); // Stop observing once the button is inserted
-}
+  if (document.body) {
+    insertButtons();
+    obs.disconnect(); // Stop observing once the buttons are inserted
+  }
 });
 
 // Start observing the page for changes
-observer.observe(document.body, { childList: true, subtree: true });
+observer.observe(document.documentElement, { childList: true, subtree: true });

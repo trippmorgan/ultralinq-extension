@@ -2,14 +2,22 @@
   "name": "ultralinq-backend",
   "version": "1.0.0",
   "description": "Local server for the UltraLinq AI Report Helper extension.",
-  "main": "server.js",
+  "main": "server.mjs",
+  "type": "module",
   "scripts": {
-    "start": "node server.js"
+    "start": "node server.mjs",
+    "analyze": "node analyze-patient.mjs"
   },
   "dependencies": {
-    "@google/generative-ai": "^0.2.1",
+    "@google/genai": "^1.27.0",
     "cors": "^2.8.5",
-    "dotenv": "^16.3.1",
-    "express": "^4.18.2"
-  }
+    "dotenv": "^16.5.0",
+    "express": "^4.19.2",
+    "puppeteer": "^24.15.0",
+    "node-fetch": "^3.3.2"
+  },
+  "devDependencies": {},
+  "keywords": [],
+  "author": "",
+  "license": "ISC"
 }

@@ -1,8 +1,8 @@
 {
   "manifest_version": 3,
   "name": "UltraLinq AI Report Helper",
-  "version": "2.0",
-  "description": "Adds an on-page button to draft AI reports from UltraLinq studies.",
+  "version": "3.0",
+  "description": "Single study and longitudinal analysis with AI",
   "permissions": [
     "debugger",
     "scripting",
@@ -20,15 +20,9 @@
   },
   "action": {
     "default_popup": "popup.html",
-    "default_title": "Draft Gemini Report",
+    "default_title": "UltraLinq AI Helper",
     "default_icon": "icon.png"
   },
-  "web_accessible_resources": [
-    {
-      "resources": ["preview.html"],
-      "matches": ["<all_urls>"]
-    }
-  ],
   "content_scripts": [
     {
       "matches": [
@@ -36,6 +30,12 @@
         "*://*.ultralinq.net/*"
       ],
       "js": ["content.js"]
+    }
+  ],
+  "web_accessible_resources": [
+    {
+      "resources": ["longitudinal-report.html"],
+      "matches": ["<all_urls>"]
     }
   ],
   "icons": {
